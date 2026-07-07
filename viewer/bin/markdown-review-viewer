@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+# markdown-review-viewer: Start the Markdown Review Viewer for a file or project.
+#
+# Usage:
+#   markdown-review-viewer               # use CWD as project root
+#   markdown-review-viewer foo.md        # project root = file's parent
+#   markdown-review-viewer ../bar        # project root = ../bar
+#   markdown-review-viewer /path/to/dir  # absolute path also OK
+#   markdown-review-viewer --no-open --print-url .local/review.md
+#   markdown-review-viewer --strict-root foo.md
+#
+# Behavior:
+#   - The viewer reads Markdown from PROJECT_ROOT/.local/*.md.
+#   - Each project root gets its own local server port. Reopening the same
+#     project reuses the existing server; opening another project starts another
+#     server on a different port.
+#   - When launched with a .md file, ?file=<basename> is appended.
+
+set -euo pipefail
+
+URL_HOST=127.0.0.1
+PORT_START="${MARKDOWN_REVIEW_PORT_START:-5173}"
+PORT_END="${MARKDOWN_REVIEW_PORT_END:-5273}"
+STATE_DIR="${MARKDOWN_REVIEW_STATE_DIR:-/tmp/markdown-review-viewer}"
+
+NO_OPEN=0
+PRINT_URL=0
+STRICT_ROOT=0
+ARGS=()
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --no-open)
+      NO_OPEN=1
+      ;;
+    --print-url)
+      PRINT_URL=1
+      ;;
+    --strict-root)
+      STRICT_ROOT=1
+      ;;
+    -h|--help)
+      sed -n '2,18p' "$0"
+      exit 0
+      ;;
+    --)
+      shift
+      while [ "$#" -gt 0 ]; do
+        ARGS+=("$1")
+        shift
+      done
+      break
+      ;;
+    -*)
+      echo "Error: unknown option $1" >&2
+      exit 1
+      ;;
+    *)
+      ARGS+=("$1")
+      ;;
+  esac
+  shift
+done
+
+ARG="${ARGS[0]:-$PWD}"
+if [ "${ARG:0:1}" = "/" ]; then
+  ARG_ABS="$ARG"
+else
+  ARG_DIR=$(cd "$(dirname "$ARG")" 2>/dev/null && pwd) || {
+    echo "Error: cannot resolve $ARG" >&2
+    exit 1
+  }
+  ARG_ABS="$ARG_DIR/$(basename "$ARG")"
+fi
+
+if [ -f "$ARG_ABS" ]; then
+  FILE_DIR=$(dirname "$ARG_ABS")
+  if [ "$(basename "$FILE_DIR")" = ".local" ]; then
+    PROJECT_ROOT=$(dirname "$FILE_DIR")
+  else
+    PROJECT_ROOT="$FILE_DIR"
+  fi
+  TARGET_FILE=$(basename "$ARG_ABS")
+elif [ -d "$ARG_ABS" ]; then
+  PROJECT_ROOT="$ARG_ABS"
+  TARGET_FILE=""
+else
+  echo "Error: $ARG is not a file or directory" >&2
+  exit 1
+fi
+
+mkdir -p "$PROJECT_ROOT/.local"
+
+SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
+while [ -L "$SCRIPT_PATH" ]; do
+  LINK_TARGET=$(readlink "$SCRIPT_PATH")
+  if [ "${LINK_TARGET:0:1}" = "/" ]; then
+    SCRIPT_PATH="$LINK_TARGET"
+  else
+    SCRIPT_PATH="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)/$LINK_TARGET"
+  fi
+done
+SCRIPT_DIR=$(cd "$(dirname "$SCRIPT_PATH")" && pwd)
+VIEWER_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
+
+mkdir -p "$STATE_DIR"
+PROJECT_ID=$(node -e "const crypto=require('crypto'); console.log(crypto.createHash('sha1').update(process.argv[1]).digest('hex').slice(0,12))" "$PROJECT_ROOT")
+PORT_FILE="$STATE_DIR/$PROJECT_ID.port"
+LOG="$STATE_DIR/$PROJECT_ID.log"
+
+info_for_port() {
+  curl -sf "http://${URL_HOST}:$1/api/info" 2>/dev/null || true
+}
+
+root_for_port() {
+  node -e "let s=''; process.stdin.on('data',c=>s+=c).on('end',()=>{try{console.log(JSON.parse(s).projectRoot||'')}catch{}})"
+}
+
+port_matches_project() {
+  local port="$1"
+  local info
+  info=$(info_for_port "$port")
+  [ -n "$info" ] && [ "$(printf "%s" "$info" | root_for_port)" = "$PROJECT_ROOT" ]
+}
+
+PORT=""
+if [ -f "$PORT_FILE" ]; then
+  saved_port=$(cat "$PORT_FILE" 2>/dev/null || true)
+  if [ -n "$saved_port" ] && port_matches_project "$saved_port"; then
+    PORT="$saved_port"
+  fi
+fi
+
+if [ -z "$PORT" ]; then
+  for p in $(seq "$PORT_START" "$PORT_END"); do
+    if port_matches_project "$p"; then
+      PORT="$p"
+      break
+    fi
+  done
+fi
+
+if [ -z "$PORT" ] && [ -n "${MARKDOWN_REVIEW_PORT:-}" ]; then
+  info=$(info_for_port "$MARKDOWN_REVIEW_PORT")
+  if [ -n "$info" ]; then
+    current_root=$(printf "%s" "$info" | root_for_port)
+    if [ "$current_root" != "$PROJECT_ROOT" ]; then
+      echo "Error: MARKDOWN_REVIEW_PORT=$MARKDOWN_REVIEW_PORT is already used by $current_root" >&2
+      [ "$STRICT_ROOT" = "1" ] && exit 2
+      exit 1
+    fi
+  fi
+  PORT="$MARKDOWN_REVIEW_PORT"
+fi
+
+if [ -z "$PORT" ]; then
+  for p in $(seq "$PORT_START" "$PORT_END"); do
+    if [ -z "$(info_for_port "$p")" ]; then
+      PORT="$p"
+      break
+    fi
+  done
+fi
+
+if [ -z "$PORT" ]; then
+  echo "Error: no available port in range ${PORT_START}-${PORT_END}" >&2
+  exit 1
+fi
+
+BASE_URL="http://${URL_HOST}:${PORT}"
+
+if port_matches_project "$PORT"; then
+  echo "[markdown-review-viewer] Already running (PORT=$PORT, PROJECT_ROOT=$PROJECT_ROOT)."
+else
+  cd "$VIEWER_DIR"
+  MARKDOWN_REVIEW_PROJECT_ROOT="$PROJECT_ROOT" MARKDOWN_REVIEW_PORT="$PORT" nohup npm run dev > "$LOG" 2>&1 &
+  PID=$!
+  echo "[markdown-review-viewer] Starting (PID: $PID). PORT=$PORT PROJECT_ROOT=$PROJECT_ROOT"
+  echo "  Logs: $LOG"
+
+  for _ in $(seq 1 30); do
+    if port_matches_project "$PORT"; then
+      break
+    fi
+    if ! kill -0 "$PID" > /dev/null 2>&1; then
+      break
+    fi
+    sleep 0.5
+  done
+
+  if ! port_matches_project "$PORT"; then
+    echo "Error: Viewer server did not become ready on ${BASE_URL}" >&2
+    echo "Last log lines:" >&2
+    tail -40 "$LOG" >&2 || true
+    exit 1
+  fi
+fi
+
+printf "%s\n" "$PORT" > "$PORT_FILE"
+
+URL="${BASE_URL}"
+if [ -n "$TARGET_FILE" ]; then
+  encoded=$(node -e "console.log(encodeURIComponent(process.argv[1]))" "$TARGET_FILE")
+  URL="${URL}/?file=${encoded}"
+fi
+
+if [ "$PRINT_URL" = "1" ]; then
+  echo "[markdown-review-viewer] URL ${URL}"
+fi
+
+if [ "$NO_OPEN" = "1" ]; then
+  exit 0
+fi
+
+echo "[markdown-review-viewer] Opening ${URL}"
+open "$URL"

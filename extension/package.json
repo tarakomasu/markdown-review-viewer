@@ -1,0 +1,80 @@
+{
+  "name": "markdown-review-viewer",
+  "displayName": "Markdown Review Viewer",
+  "description": "Open .md files in the browser-based Markdown Review Viewer (Cursor / VS Code)",
+  "version": "0.1.0",
+  "publisher": "local",
+  "private": true,
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "markdownReviewViewer.open",
+        "title": "Open in Markdown Review Viewer (Browser)",
+        "category": "Markdown Review"
+      },
+      {
+        "command": "markdownReviewViewer.openWebview",
+        "title": "Open in Markdown Review Viewer (Webview)",
+        "category": "Markdown Review"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "markdownReviewViewer.open",
+          "when": "resourceExtname == .md",
+          "group": "navigation@10"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "markdownReviewViewer.open",
+          "when": "resourceExtname == .md",
+          "group": "navigation@10"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "markdownReviewViewer.open",
+          "when": "resourceExtname == .md",
+          "group": "navigation@10"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Markdown Review Viewer",
+      "properties": {
+        "markdownReviewViewer.binPath": {
+          "type": "string",
+          "default": "markdown-review-viewer",
+          "description": "Path to the markdown-review-viewer executable. Use an absolute path if it isn't on PATH."
+        },
+        "prDraftViewer.binPath": {
+          "type": "string",
+          "default": "",
+          "markdownDeprecationMessage": "Use markdownReviewViewer.binPath instead.",
+          "description": "Deprecated compatibility setting for the old pr-draft-viewer launcher path."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/vscode": "^1.80.0",
+    "@vscode/vsce": "^3.2.1",
+    "typescript": "^5.6.3"
+  }
+}

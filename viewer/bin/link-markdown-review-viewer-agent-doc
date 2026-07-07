@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Link Markdown Review Viewer AI instructions into a repository.
+
+set -euo pipefail
+
+REPO_ROOT="${1:-$PWD}"
+if [ ! -d "$REPO_ROOT" ]; then
+  echo "Error: repository directory does not exist: $REPO_ROOT" >&2
+  exit 1
+fi
+
+GLOBAL_DOC="${MARKDOWN_REVIEW_AGENT_DOC:-/Users/nao.shimoyama/.config/markdown-review-viewer/AGENT_USAGE.md}"
+if [ ! -f "$GLOBAL_DOC" ]; then
+  echo "Error: global agent doc does not exist: $GLOBAL_DOC" >&2
+  exit 1
+fi
+
+mkdir -p "$REPO_ROOT/.agents"
+ln -sf "$GLOBAL_DOC" "$REPO_ROOT/.agents/markdown-review-viewer.md"
+
+POINTER='
+## Markdown Review Viewer
+
+This repository can use Markdown Review Viewer for `.local/*.md` review workflows.
+AI agents should read `.agents/markdown-review-viewer.md` before creating, opening, or editing viewer review state.
+'
+
+ensure_pointer() {
+  local file="$1"
+  local heading="$2"
+
+  if [ ! -e "$file" ]; then
+    {
+      echo "$heading"
+      printf "%s\n" "$POINTER"
+    } > "$file"
+    echo "Created $file"
+    return
+  fi
+
+  if grep -qF ".agents/markdown-review-viewer.md" "$file"; then
+    echo "Kept existing $file (viewer pointer already present)"
+    return
+  fi
+
+  {
+    printf "\n"
+    printf "%s\n" "$POINTER"
+  } >> "$file"
+  echo "Updated $file"
+}
+
+ensure_pointer "$REPO_ROOT/AGENTS.md" "# Agent Instructions"
+ensure_pointer "$REPO_ROOT/CLAUDE.md" "# Claude Instructions"
+
+echo "Linked $REPO_ROOT/.agents/markdown-review-viewer.md -> $GLOBAL_DOC"

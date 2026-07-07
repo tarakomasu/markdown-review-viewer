@@ -1,0 +1,24 @@
+# Local-only working state — snapshots/ is the published form of .local
+.local/
+
+# Personal working notes and screenshots (add deliberately if ever needed)
+*.png
+*.jpg
+desc.md
+改善メモ.md
+# ...but snapshot assets are the published record — keep them
+!snapshots/**/*.png
+!snapshots/**/*.jpg
+
+# Editor/agent local config
+.claude/
+.zed/
+
+# Build artifacts
+node_modules/
+dist/
+out/
+site/
+*.vsix
+*.log
+.DS_Store

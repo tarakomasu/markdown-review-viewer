@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Backward-compatible alias. Prefer bin/markdown-review-viewer for new usage.
+SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
+while [ -L "$SCRIPT_PATH" ]; do
+  LINK_TARGET=$(readlink "$SCRIPT_PATH")
+  if [ "${LINK_TARGET:0:1}" = "/" ]; then
+    SCRIPT_PATH="$LINK_TARGET"
+  else
+    SCRIPT_PATH="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)/$LINK_TARGET"
+  fi
+done
+SCRIPT_DIR=$(cd "$(dirname "$SCRIPT_PATH")" && pwd)
+exec "$SCRIPT_DIR/markdown-review-viewer" "$@"
