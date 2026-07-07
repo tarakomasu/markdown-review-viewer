@@ -38,6 +38,9 @@ jobs:
         run: node scripts/build-pages.mjs
 
       - uses: actions/configure-pages@v5
+        with:
+          # First run enables Pages on the repo (workflow build type)
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
