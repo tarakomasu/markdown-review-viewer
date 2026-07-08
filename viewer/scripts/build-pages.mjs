@@ -87,6 +87,11 @@ for (const id of snapshots) {
   console.log(`[build-pages] snapshot ${id} (${files.length} md)`);
 }
 
+// Root index shares the app's favicon.
+if (fs.existsSync(path.join(distDir, 'favicon.svg'))) {
+  fs.copyFileSync(path.join(distDir, 'favicon.svg'), path.join(siteDir, 'favicon.svg'));
+}
+
 // Root index: plain list of snapshots, newest first.
 const esc = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -109,6 +114,7 @@ fs.writeFileSync(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <title>Markdown Review Snapshots</title>
   <style>
     :root { color-scheme: dark; }
