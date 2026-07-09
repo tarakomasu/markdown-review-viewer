@@ -143,6 +143,34 @@ MARKDOWN_REVIEW_PORT_END
 
 Sections are split by Markdown `##` headings.
 
+## Code Jump Links
+
+When a review document references source code, write the reference as a normal
+Markdown link whose URL is exactly `<path>:<line>`. The viewer renders it as a
+jump link that opens the file at that line in the user's editor (cursor /
+vscode / zed, chosen in the sidebar).
+
+```markdown
+実装は [report.rb:120](app/models/report.rb:120) を参照。
+バリデーションは [UserService.java:42](src/main/java/UserService.java:42) で行う。
+```
+
+Rules:
+
+- It MUST be a Markdown link: `[label](path:line)`. Inline code such as
+  `` `app/models/report.rb:120` `` or a plain-text `path:line` is NOT
+  converted — it renders as ordinary text and nothing is clickable.
+- `path` is relative to the project root (the directory that contains
+  `.local/`). Paths that resolve outside the project root are rejected.
+- `path` must not contain spaces or `:` characters; `line` is a 1-based
+  positive integer. `https://` URLs and `mailto:` links are unaffected.
+- The link label is free text — the path itself, a symbol name, or a phrase.
+- Put the jump link immediately before or after a fenced code block when
+  quoting code; the code block itself cannot be a link.
+
+In shared static builds (GitHub Pages snapshots), jump links degrade to plain
+text because there is no local editor to open.
+
 ## Agent Rules
 
 - Treat `.local/*.md` as viewer input.
