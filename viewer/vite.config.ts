@@ -106,23 +106,6 @@ function writeJson(res: any, statusCode: number, payload: unknown) {
   res.end(JSON.stringify(payload));
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => {
-    switch (char) {
-      case '&':
-        return '&amp;';
-      case '<':
-        return '&lt;';
-      case '>':
-        return '&gt;';
-      case '"':
-        return '&quot;';
-      default:
-        return '&#39;';
-    }
-  });
-}
-
 function validateCodexPayload(value: unknown): CodexReplyPayload {
   if (!value || typeof value !== 'object') throw new Error('invalid payload');
   const payload = value as Record<string, unknown>;
@@ -535,35 +518,20 @@ function apiPlugin() {
           const abs = safeAbs(rel);
           if (!abs) { res.statusCode = 403; res.end('forbidden'); return; }
 
-          if (scheme === 'zed') {
-            const target = `${abs}:${line}`;
-            const child = spawn('zed', [target], { detached: true, stdio: 'ignore' });
-            child.on('error', () => {});
-            child.unref();
+          // Open the editor from the server side and return JSON, so the
+          // viewer page never navigates away.
+          const child =
+            scheme === 'zed'
+              ? spawn('zed', [`${abs}:${line}`], { detached: true, stdio: 'ignore' })
+              : spawn('open', [`${scheme}://file${abs}:${line}`], {
+                  detached: true,
+                  stdio: 'ignore',
+                });
+          child.on('error', () => {});
+          child.unref();
 
-            res.setHeader('Content-Type', 'text/html; charset=utf-8');
-            res.end(`<!doctype html>
-<html>
-<head><meta charset="utf-8"><title>Opening...</title></head>
-<body style="background:#0d1117;color:#c9d1d9;font-family:sans-serif;padding:24px;">
-  <p>Opening <code>${escapeHtml(target)}</code> in <strong>zed</strong>...</p>
-  <p>If it didn't open, run: <code>zed ${escapeHtml(target)}</code></p>
-</body>
-</html>`);
-            return;
-          }
-
-          const uri = `${scheme}://file${abs}:${line}`;
-          res.setHeader('Content-Type', 'text/html; charset=utf-8');
-          res.end(`<!doctype html>
-<html>
-<head><meta charset="utf-8"><title>Opening...</title></head>
-<body style="background:#0d1117;color:#c9d1d9;font-family:sans-serif;padding:24px;">
-  <p>Opening <code>${escapeHtml(abs)}:${line}</code> in <strong>${scheme}</strong>...</p>
-  <p>If it didn't open, <a href="${escapeHtml(uri)}">click here</a> or copy: <code>${escapeHtml(uri)}</code></p>
-  <script>window.location.href = ${JSON.stringify(uri)};</script>
-</body>
-</html>`);
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ ok: true, target: `${abs}:${line}`, scheme }));
         } catch (e: any) {
           res.statusCode = 500;
           res.end(String(e.message));

@@ -760,7 +760,15 @@ export function MarkdownViewer({
           }
           const target = `/api/open?path=${encodeURIComponent(jump.path)}&line=${jump.line}&scheme=${scheme}`;
           return (
-            <a href={target} title={`${jump.path}:${jump.line} を ${scheme} で開く`}>
+            <a
+              href={target}
+              title={`${jump.path}:${jump.line} を ${scheme} で開く`}
+              onClick={(e) => {
+                // Open in the editor without navigating the viewer tab away.
+                e.preventDefault();
+                void fetch(target).catch(() => {});
+              }}
+            >
               {children} <span className="jump-marker">↗</span>
             </a>
           );
