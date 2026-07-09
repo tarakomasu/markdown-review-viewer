@@ -26,7 +26,11 @@ for (let n = 2; fs.existsSync(path.join(snapshotsDir, id)); n++) {
 const outDir = path.join(snapshotsDir, id);
 
 const mdFiles = fs.existsSync(localDir)
-  ? fs.readdirSync(localDir).filter((f) => f.endsWith('.md')).sort()
+  ? fs
+      .readdirSync(localDir)
+      // markdown-review-viewer.md is the linked agent contract doc, not a review target
+      .filter((f) => f.endsWith('.md') && f !== 'markdown-review-viewer.md')
+      .sort()
   : [];
 if (mdFiles.length === 0) {
   console.error(`[snapshot] no .md files in ${localDir}`);

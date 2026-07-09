@@ -412,7 +412,10 @@ function apiPlugin() {
       server.middlewares.use('/api/files', async (_req: any, res: any) => {
         try {
           const items = await fs.readdir(LOCAL_DIR).catch(() => [] as string[]);
-          const mdFiles = items.filter((f: string) => f.endsWith('.md'));
+          // markdown-review-viewer.md is the linked agent contract doc, not a review target
+          const mdFiles = items.filter(
+            (f: string) => f.endsWith('.md') && f !== 'markdown-review-viewer.md'
+          );
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify(mdFiles));
         } catch (e: any) {

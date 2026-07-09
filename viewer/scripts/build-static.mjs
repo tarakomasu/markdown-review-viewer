@@ -43,7 +43,11 @@ if (!fs.existsSync(localDir)) {
 }
 
 // 1. Markdown files + contents
-const files = fs.readdirSync(localDir).filter((f) => f.endsWith('.md')).sort();
+// markdown-review-viewer.md is the linked agent contract doc, not a review target
+const files = fs
+  .readdirSync(localDir)
+  .filter((f) => f.endsWith('.md') && f !== 'markdown-review-viewer.md')
+  .sort();
 const contents = {};
 for (const f of files) contents[f] = fs.readFileSync(path.join(localDir, f), 'utf-8');
 

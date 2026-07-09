@@ -177,7 +177,10 @@ text because there is no local editor to open.
 - Treat `.local/comments.json` and `.local/viewed.json` as viewer-owned review state.
 - Prefer launching `markdown-review-viewer` instead of the old `pr-draft-viewer` name.
 - The old `pr-draft-viewer` command is only a compatibility wrapper.
-- If a repo has this file linked at `.agents/markdown-review-viewer.md`, use it as the local contract for viewer behavior.
+- This doc is linked into repos at `.local/markdown-review-viewer.md` (older
+  setups used `.agents/markdown-review-viewer.md`). Use it as the local
+  contract for viewer behavior. The viewer excludes this file from its review
+  file list and from snapshots.
 - If you need to create a reviewable document for the user, put it under `.local/` and then open it with `markdown-review-viewer`.
 
 ## Related Paths On This Machine

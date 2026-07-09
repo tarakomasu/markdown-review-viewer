@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
-# Link Markdown Review Viewer AI instructions into a repository.
+# Link Markdown Review Viewer AI instructions into a repository (or plain dir).
+#
+# The doc is linked at .local/markdown-review-viewer.md — .local/ is the
+# viewer's own directory and is kept out of git (added to .git/info/exclude
+# when needed), so company repos stay clean.
+#
+# CLAUDE.md / AGENTS.md pointers are only written when the file is NOT
+# git-tracked: never dirty a shared repo file. For tracked repos, put the
+# pointer in a parent directory instead (e.g. ~/newspicks/CLAUDE.md) —
+# agents read CLAUDE.md/AGENTS.md hierarchically.
 
 set -euo pipefail
 
@@ -15,19 +24,42 @@ if [ ! -f "$GLOBAL_DOC" ]; then
   exit 1
 fi
 
-mkdir -p "$REPO_ROOT/.agents"
-ln -sf "$GLOBAL_DOC" "$REPO_ROOT/.agents/markdown-review-viewer.md"
+mkdir -p "$REPO_ROOT/.local"
+ln -sf "$GLOBAL_DOC" "$REPO_ROOT/.local/markdown-review-viewer.md"
+echo "Linked $REPO_ROOT/.local/markdown-review-viewer.md -> $GLOBAL_DOC"
+
+# Keep .local/ out of git without touching the shared .gitignore.
+if git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if ! git -C "$REPO_ROOT" check-ignore -q .local/x 2>/dev/null; then
+    EXCLUDE="$(git -C "$REPO_ROOT" rev-parse --git-dir)/info/exclude"
+    mkdir -p "$(dirname "$EXCLUDE")"
+    echo '.local/' >> "$EXCLUDE"
+    echo "Added .local/ to $EXCLUDE"
+  fi
+fi
 
 POINTER='
 ## Markdown Review Viewer
 
 This repository can use Markdown Review Viewer for `.local/*.md` review workflows.
-AI agents should read `.agents/markdown-review-viewer.md` before creating, opening, or editing viewer review state.
+AI agents should read `.local/markdown-review-viewer.md` before creating, opening, or editing viewer review state.
 '
 
 ensure_pointer() {
   local file="$1"
   local heading="$2"
+
+  # Never edit through a symlink (AGENTS.md -> CLAUDE.md would double-append).
+  if [ -L "$file" ]; then
+    echo "Skipped $file (symlink)"
+    return
+  fi
+
+  # Never dirty a git-tracked file; rely on a parent-dir CLAUDE.md instead.
+  if git -C "$REPO_ROOT" ls-files --error-unmatch "$(basename "$file")" >/dev/null 2>&1; then
+    echo "Skipped $file (git-tracked — add the pointer to a parent dir instead)"
+    return
+  fi
 
   if [ ! -e "$file" ]; then
     {
@@ -38,7 +70,7 @@ ensure_pointer() {
     return
   fi
 
-  if grep -qF ".agents/markdown-review-viewer.md" "$file"; then
+  if grep -qF "markdown-review-viewer.md" "$file"; then
     echo "Kept existing $file (viewer pointer already present)"
     return
   fi
@@ -52,5 +84,3 @@ ensure_pointer() {
 
 ensure_pointer "$REPO_ROOT/AGENTS.md" "# Agent Instructions"
 ensure_pointer "$REPO_ROOT/CLAUDE.md" "# Claude Instructions"
-
-echo "Linked $REPO_ROOT/.agents/markdown-review-viewer.md -> $GLOBAL_DOC"
