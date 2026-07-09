@@ -75,6 +75,32 @@ function isJumpLink(href: string): { path: string; line: number } | null {
   return { path: p, line: Number(lineStr) };
 }
 
+// GitHub-style slug, Japanese preserved: lowercase, drop punctuation, spaces -> '-'
+function slugify(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+    .replace(/\s+/g, '-');
+}
+
+function extractText(node: ReactNode): string {
+  if (node == null || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(extractText).join('');
+  if (typeof node === 'object' && 'props' in node) {
+    return extractText((node as { props: { children?: ReactNode } }).props.children);
+  }
+  return '';
+}
+
+interface HeadingEntry {
+  line: number; // 1-based
+  level: number;
+  text: string;
+  slug: string;
+}
+
 function stripH2(body: string): string {
   return body.replace(/^## .+\n?/, '');
 }
@@ -266,6 +292,13 @@ export function MarkdownViewer({
 }: Props) {
   const [activeRange, setActiveRange] = useState<LineRange | null>(null);
   const [draft, setDraft] = useState('');
+  const [anchorPreview, setAnchorPreview] = useState<{
+    x: number;
+    y: number;
+    openUp: boolean;
+    md: string;
+  } | null>(null);
+  const anchorPreviewTimer = useRef<number | undefined>(undefined);
   const [replyWithCodex, setReplyWithCodex] = useState(false);
   const [replyWithCodexOnEdit, setReplyWithCodexOnEdit] = useState(false);
   const [replyWithCodexOnReply, setReplyWithCodexOnReply] = useState(false);
@@ -283,6 +316,79 @@ export function MarkdownViewer({
   const dragStartRef = useRef<number | null>(null);
 
   const lines = useMemo(() => source.split('\n'), [source]);
+
+  // In-document anchors: all headings with their source line and slug
+  const headingIndex = useMemo<HeadingEntry[]>(() => {
+    const index: HeadingEntry[] = [];
+    let inFence = false;
+    lines.forEach((raw, i) => {
+      if (/^(```|~~~)/.test(raw.trimStart())) {
+        inFence = !inFence;
+        return;
+      }
+      if (inFence) return;
+      const m = raw.match(/^(#{1,6})\s+(.+?)\s*$/);
+      if (m) index.push({ line: i + 1, level: m[1].length, text: m[2], slug: slugify(m[2]) });
+    });
+    return index;
+  }, [lines]);
+
+  // Resolve "#..." to a heading: slug match -> exact text -> prefix, so a terse
+  // link like [C1](#C1) reaches "### C1: <制約名>".
+  const resolveAnchor = (hash: string): HeadingEntry | null => {
+    const q = decodeURIComponent(hash).trim();
+    if (!q) return null;
+    const qSlug = slugify(q);
+    return (
+      headingIndex.find((h) => h.slug === qSlug) ??
+      headingIndex.find((h) => h.text === q) ??
+      headingIndex.find((h) => h.text.startsWith(q)) ??
+      headingIndex.find((h) => h.slug.startsWith(qSlug)) ??
+      null
+    );
+  };
+
+  // The heading's block: from its line to the next heading of same-or-higher level
+  const anchorPreviewMarkdown = (target: HeadingEntry): string => {
+    const next = headingIndex.find((h) => h.line > target.line && h.level <= target.level);
+    const end = Math.min(next ? next.line - 1 : lines.length, target.line + 60);
+    return lines.slice(target.line - 1, end).join('\n');
+  };
+
+  const jumpToAnchor = (target: HeadingEntry) => {
+    const el =
+      document.getElementById(target.slug) ??
+      // Collapsed (viewed) sections don't render their headings — fall back to
+      // the enclosing section header, which always exists.
+      (() => {
+        const sec = sections.find(
+          (s) => target.line >= s.startLine && target.line <= s.endLine
+        );
+        return sec ? document.getElementById(`section-line-${sec.startLine}`) : null;
+      })();
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const showAnchorPreview = (e: { currentTarget: Element }, target: HeadingEntry) => {
+    window.clearTimeout(anchorPreviewTimer.current);
+    const rect = e.currentTarget.getBoundingClientRect();
+    const openUp = rect.bottom > window.innerHeight * 0.6;
+    setAnchorPreview({
+      x: Math.max(8, Math.min(rect.left, window.innerWidth - 540)),
+      y: openUp ? rect.top - 8 : rect.bottom + 8,
+      openUp,
+      md: anchorPreviewMarkdown(target),
+    });
+  };
+
+  const hideAnchorPreview = () => {
+    window.clearTimeout(anchorPreviewTimer.current);
+    anchorPreviewTimer.current = window.setTimeout(() => setAnchorPreview(null), 200);
+  };
+
+  const keepAnchorPreview = () => {
+    window.clearTimeout(anchorPreviewTimer.current);
+  };
   const normalizedActiveRange = activeRange ? normalizeRange(activeRange) : null;
   const shouldVirtualize = lines.length > LARGE_FILE_LINE_THRESHOLD;
   const [visibleLineRange, setVisibleLineRange] = useState(() => ({
@@ -750,8 +856,43 @@ export function MarkdownViewer({
         const rel = src.startsWith('/') ? src.slice(1) : `.local/${src}`;
         return <img src={assetUrl(rel)} alt={alt ?? ''} loading="lazy" />;
       },
+      // Heading ids so in-document links can resolve (chunked rendering means
+      // rehype-slug can't be used; slugs must match headingIndex's slugify)
+      h1: ({ children, ...props }: any) => <h1 id={slugify(extractText(children))} {...props}>{children}</h1>,
+      h2: ({ children, ...props }: any) => <h2 id={slugify(extractText(children))} {...props}>{children}</h2>,
+      h3: ({ children, ...props }: any) => <h3 id={slugify(extractText(children))} {...props}>{children}</h3>,
+      h4: ({ children, ...props }: any) => <h4 id={slugify(extractText(children))} {...props}>{children}</h4>,
+      h5: ({ children, ...props }: any) => <h5 id={slugify(extractText(children))} {...props}>{children}</h5>,
+      h6: ({ children, ...props }: any) => <h6 id={slugify(extractText(children))} {...props}>{children}</h6>,
       a: ({ href, children }: any) => {
         if (!href) return <a>{children}</a>;
+        // In-document link: click jumps to the heading, hover previews it (LSP-like)
+        if (href.startsWith('#')) {
+          const target = resolveAnchor(href.slice(1));
+          if (!target) {
+            return (
+              <span className="self-link-broken" title={`リンク先の見出しが見つかりません: ${href}`}>
+                {children}
+              </span>
+            );
+          }
+          return (
+            <a
+              href={href}
+              className="self-link"
+              title={target.text}
+              onClick={(e) => {
+                e.preventDefault();
+                hideAnchorPreview();
+                jumpToAnchor(target);
+              }}
+              onMouseEnter={(e) => showAnchorPreview(e, target)}
+              onMouseLeave={hideAnchorPreview}
+            >
+              {children}
+            </a>
+          );
+        }
         const jump = isJumpLink(href);
         if (jump) {
           // No editor to open in a static/shared build — show the reference as plain text.
@@ -785,7 +926,8 @@ export function MarkdownViewer({
         );
       },
     }),
-    [scheme]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scheme, headingIndex, sections]
   );
 
   const getAnchorsInRange = (startLine: number, endLine: number): number[] => {
@@ -1255,7 +1397,7 @@ export function MarkdownViewer({
                 <div className="review-row section-heading-row">
                   {renderLineNumbers(sec.startLine, sec.startLine)}
                   <div className="section-header-row">
-                    <h2 className="section-title">{sec.title}</h2>
+                    <h2 className="section-title" id={slugify(sec.title)}>{sec.title}</h2>
                     <label className="viewed-toggle">
                       <input
                         type="checkbox"
@@ -1288,6 +1430,29 @@ export function MarkdownViewer({
           })}
         </div>
       </div>
+
+      {anchorPreview && (
+        <div
+          className="anchor-popover"
+          style={{
+            left: anchorPreview.x,
+            top: anchorPreview.y,
+            transform: anchorPreview.openUp ? 'translateY(-100%)' : undefined,
+          }}
+          onMouseEnter={keepAnchorPreview}
+          onMouseLeave={hideAnchorPreview}
+        >
+          <div className="markdown-body">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw]}
+              components={markdownComponents}
+            >
+              {anchorPreview.md}
+            </ReactMarkdown>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

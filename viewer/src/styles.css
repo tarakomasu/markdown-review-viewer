@@ -319,6 +319,35 @@ body {
 .markdown-body pre.shiki code { display: block; }
 .markdown-body a { color: var(--link); text-decoration: none; }
 .markdown-body a:hover { text-decoration: underline; }
+
+/* In-document links (self links): jump on click, LSP-like preview on hover */
+.markdown-body a.self-link {
+  border-bottom: 1px dashed var(--accent);
+}
+.markdown-body a.self-link:hover { text-decoration: none; background: var(--accent-soft); }
+.markdown-body .self-link-broken {
+  border-bottom: 1px dashed var(--danger);
+  cursor: help;
+}
+/* Anchor jump lands below the sticky headers */
+.markdown-body h1, .markdown-body h2, .markdown-body h3,
+.markdown-body h4, .markdown-body h5, .markdown-body h6 {
+  scroll-margin-top: 96px;
+}
+
+.anchor-popover {
+  position: fixed;
+  z-index: 40;
+  width: min(520px, 90vw);
+  max-height: 45vh;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+}
 .markdown-body img {
   max-width: 100%;
   border: 1px solid var(--border);

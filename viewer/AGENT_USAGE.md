@@ -171,6 +171,33 @@ Rules:
 In shared static builds (GitHub Pages snapshots), jump links degrade to plain
 text because there is no local editor to open.
 
+## In-Document Links (self links)
+
+To reference another part of the same document, write a normal Markdown anchor
+link whose URL is `#` + the target heading text:
+
+```markdown
+制約の詳細は [C1](#C1) を参照。
+[判断事項 L1](#判断事項 L1 (仕様)) で決める。
+```
+
+Viewer behavior:
+
+- Click: scrolls to that heading (if its section is collapsed as Viewed, it
+  scrolls to the section header instead)
+- Hover: shows an LSP-like popover previewing that heading's block (from the
+  heading to the next same-or-higher-level heading)
+
+Anchor resolution is forgiving, tried in order: slug match (GitHub-style,
+Japanese preserved) → exact heading text → heading-text prefix → slug prefix.
+So `#C1` reaches the heading `### C1: <制約名>`.
+
+Recommended uses in review docs:
+
+- 制約一覧 (C#) / 既存実装一覧 (E#) の行 → 同 ID の詳細セクション
+- 判断インデックス → 各判断テーブル
+- 本文中の用語 → その定義・具体例のセクション
+
 ## Agent Rules
 
 - Treat `.local/*.md` as viewer input.
